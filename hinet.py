@@ -1,0 +1,130 @@
+﻿# -*- coding: utf-8 -*-
+
+from selenium import webdriver
+import os
+import re
+import sys
+import urllib
+import urllib2
+import zlib
+import time
+import logging
+import subprocess
+
+duration = 2*60*60
+
+if len(sys.argv) > 1:
+  prog = sys.argv[1]
+  outFile = prog + '_' + time.strftime('%Y%m%d',time.localtime()) + '.ts'
+  if prog == 'bluespower':
+    radioId = u"Classical Taiwan愛樂電台"
+  elif prog == 'music543':
+    radioId = u"NEWS98新聞網"
+  else:
+    sys.exit(0)
+else:
+  sys.exit(0)
+
+site = 'radio-hichannel.cdn.hinet.net'
+urlLog = 'ffurl.log'
+profDir = 'd:/temp/HiC'
+urlHiChannel = 'http://hichannel.hinet.net/'
+
+f = open(urlLog,"w")
+f.close()
+
+fb = webdriver.firefox.firefox_binary.FirefoxBinary("D:/programs/Firefox36/firefox.exe")
+fp = webdriver.FirefoxProfile(profDir)
+#fp = webdriver.FirefoxProfile()
+browser = webdriver.Firefox(firefox_profile=fp,firefox_binary=fb)
+browser.get(urlHiChannel)
+time.sleep(30) #wait for advertisement to finish
+proc = subprocess.Popen(['tshark', '-i 2', '-f tcp port 80', '-c 300', '-wHiCh.cap'], shell=True)
+browser.find_element_by_link_text(radioId).click()
+proc.wait()
+f = open(urlLog,'w')
+subprocess.call(['tshark', '-rHiCh.cap','-2', '-R http.request'],stdout=f)
+f.close()
+browser.quit()
+
+reParam = re.compile('(/live/pool/.+?)[^/]+0.m3u8\?token1=([^&]+)&token2=([^&]+)&expire1=(\d+)&expire2=(\d+)')
+matchParam = None
+elapsed = 0
+while matchParam is None and elapsed < 120:
+    with open(urlLog,'r') as f:
+        for line in f:
+            matchParam = reParam.search(line)
+            if matchParam: break
+    if matchParam: break
+    time.sleep(20)
+    elapsed += 20
+
+if matchParam is None: sys.exit(0)
+
+url = 'http://' + site + matchParam.group(0)
+path,token1,token2,expire1,expire2 = matchParam.groups()
+
+prefix = 'http://' + site + path
+
+headers = { 'Host': site,
+            'Connection': 'keep-alive',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.111 Safari/537.36',
+            'Accept': '*/*',
+            'Referer': urlHiChannel,
+            'Accept-Encoding': 'gzip,deflate,sdch',
+            'Accept-Language': 'zh-TW,zh;q=0.8,en-US;q=0.6,en;q=0.4'
+           }
+
+logging.basicConfig(filename='radio.log',level=logging.DEBUG,format="%(asctime)s: %(message)s")
+logging.info("opening URL: " + url)
+
+lastId = 0
+f = open(outFile,'wb')
+elapsed = 0
+t0 = time.time()
+while elapsed < duration:
+    req = urllib2.Request(url, None, headers)
+    try:
+      response = urllib2.urlopen(req)
+      hdr = response.info().getheader('Content-Type')
+      if re.search(r'vnd\.apple\.mpegurl',hdr) is None:
+         print "not mpegurl", hdr
+         time.sleep(1)
+         continue
+      hdr = response.info().getheader('Content-Encoding')
+      page = response.read()
+      if hdr == 'gzip':
+         print "unzip mpegurl"
+         page = zlib.decompress(page,16+zlib.MAX_WBITS)
+
+      #with open("mpegurl."+str(t),"w+") as f1:
+      #   f1.write(page)
+
+      t1 = time.time()
+      for line in page.split():
+          m1 = re.search(r'(\d+)\.ts$',line)
+          if m1:
+             id = m1.group(1)
+             if id <= lastId:
+                print "skip {0}".format(id)
+             else:
+                print "record {0} ".format(id)
+                url_ts = prefix+line.rstrip('\n')
+                #fname = 'chunk_{0}.ts'.format(id)
+                #cmd = "wget -O {0} \"{1}\"".format(fname,url_ts)
+                #print cmd
+                #os.system(cmd)
+                #print "done"
+                print "GET {0} ... ".format(url_ts),
+                req = urllib2.Request(url_ts, None, headers)
+                f.write(urllib2.urlopen(req,timeout=10).read())
+                print "done"
+                lastId = id
+      pause = 5 - (time.time() - t1)
+      if pause > 0: time.sleep(pause)
+      elapsed = time.time() - t0
+    except Exception as e:
+      logging.error(e)
+      time.sleep(1)
+
+f.close()
