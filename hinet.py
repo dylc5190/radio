@@ -25,48 +25,43 @@ if len(sys.argv) > 1:
 else:
   sys.exit(0)
 
-site = 'radio-hichannel.cdn.hinet.net'
-urlLog = 'ffurl.log'
+site = 'http://radio-hichannel.cdn.hinet.net'
+logFile = 'radio.log'
+pcapFile = 'HiC.cap';
 profDir = 'd:/temp/HiC'
 urlHiChannel = 'http://hichannel.hinet.net/'
 
-f = open(urlLog,"w")
-f.close()
-
+try:
+  os.remove(logFile)
+except OSError:
+  pass
 fb = webdriver.firefox.firefox_binary.FirefoxBinary("D:/programs/Firefox36/firefox.exe")
-fp = webdriver.FirefoxProfile(profDir)
-#fp = webdriver.FirefoxProfile()
+fp = webdriver.FirefoxProfile(profDir) # fp = webdriver.FirefoxProfile() is OK too.
 browser = webdriver.Firefox(firefox_profile=fp,firefox_binary=fb)
 browser.get(urlHiChannel)
 time.sleep(30) #wait for advertisement to finish
-proc = subprocess.Popen(['tshark', '-i 2', '-f tcp port 80', '-c 300', '-wHiCh.cap'], shell=True)
+proc = subprocess.Popen(['tshark', '-i 2', '-f tcp port 80', '-c 300', '-w'+pcapFile])
 browser.find_element_by_link_text(radioId).click()
 proc.wait()
-f = open(urlLog,'w')
-subprocess.call(['tshark', '-rHiCh.cap','-2', '-R http.request'],stdout=f)
+f = open(logFile,'w')
+subprocess.call(['tshark', '-r'+pcapFile, '-2', '-R http.request'], stdout=f)
 f.close()
 browser.quit()
 
 reParam = re.compile('(/live/pool/.+?)[^/]+0.m3u8\?token1=([^&]+)&token2=([^&]+)&expire1=(\d+)&expire2=(\d+)')
 matchParam = None
-elapsed = 0
-while matchParam is None and elapsed < 120:
-    with open(urlLog,'r') as f:
-        for line in f:
-            matchParam = reParam.search(line)
-            if matchParam: break
+with open(logFile,'r') as f:
+  for line in f:
+    matchParam = reParam.search(line)
     if matchParam: break
-    time.sleep(20)
-    elapsed += 20
 
 if matchParam is None: sys.exit(0)
 
-url = 'http://' + site + matchParam.group(0)
+url = site + matchParam.group(0)
 path,token1,token2,expire1,expire2 = matchParam.groups()
+prefix = site + path
 
-prefix = 'http://' + site + path
-
-headers = { 'Host': site,
+headers = { 'Host': site[7:], #skip http://
             'Connection': 'keep-alive',
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.111 Safari/537.36',
             'Accept': '*/*',
@@ -75,7 +70,7 @@ headers = { 'Host': site,
             'Accept-Language': 'zh-TW,zh;q=0.8,en-US;q=0.6,en;q=0.4'
            }
 
-logging.basicConfig(filename='radio.log',level=logging.DEBUG,format="%(asctime)s: %(message)s")
+logging.basicConfig(filename=logFile,level=logging.DEBUG,format="%(asctime)s: %(message)s")
 logging.info("opening URL: " + url)
 
 lastId = 0
