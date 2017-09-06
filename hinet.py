@@ -10,6 +10,7 @@ import zlib
 import time
 import logging
 import subprocess
+import datetime
 
 duration = 2*60*60
 
@@ -27,46 +28,37 @@ else:
 
 site = 'http://radio-hichannel.cdn.hinet.net'
 logFile = 'radio.log'
-urlInfo = '__url.txt'
-pcapFile = 'HiC.cap';
-profDir = 'd:/temp/HiC'
+urlInfo = 'ff.log.0' #this should sync with environment variable MOZ_LOG_FILE below
 urlHiChannel = 'http://hichannel.hinet.net/'
+
+if os.path.exists(urlInfo): os.remove(urlInfo)
+os.environ["MOZ_LOG"] = "timestamp,rotate:200,nsHttp:3"
+os.environ["MOZ_LOG_FILE"] = "d:/temp/ff.log"
 
 logging.basicConfig(filename=logFile,level=logging.DEBUG,format="%(asctime)s: %(message)s")
 
 fb = webdriver.firefox.firefox_binary.FirefoxBinary("D:/programs/Firefox36/firefox.exe")
-fp = webdriver.FirefoxProfile(profDir) # fp = webdriver.FirefoxProfile() is OK too.
+fp = webdriver.FirefoxProfile()
 browser = webdriver.Firefox(firefox_profile=fp,firefox_binary=fb)
 browser.get(urlHiChannel)
 time.sleep(60) #wait for advertisement to finish
-proc = subprocess.Popen(['tshark', '-i 2', '-f tcp port 80', '-c 300', '-w'+pcapFile])
-browser.find_element_by_xpath("//div/p[contains(text(),'{0}')]/../preceding-sibling::a".format(radioId)).click()
-'''
-# problem not solved here: even change the channel during ad, after ad is finished, the page reloads the default program.
-timeout = 60
-found = 0
-while found == 0 and timeout > 0:
-  try:
-    browser.find_element_by_xpath("//div/p[contains(text(),'{0}')]/../preceding-sibling::a".format(radioId)).click()
-    channel = browser.find_element_by_xpath("//p[@id='playingChannel']")
-    if re.search(radioId,channel.text): found = 1
-  except:
-    pass
-  time.sleep(1)
-  timeout -= 1
-'''
-proc.wait()
-f = open(urlInfo,'w')
-subprocess.call(['tshark', '-r'+pcapFile, '-2', '-R http.request'], stdout=f)
-f.close()
+timeBegin = datetime.datetime.utcnow()
+time.sleep(1)
+try:
+  browser.find_element_by_xpath("//div/p[contains(text(),'{0}')]/../preceding-sibling::a".format(radioId)).click()
+except:
+  pass
 browser.quit()
 
+print "search log after " + str(timeBegin)
 reParam = re.compile('(/live/pool/.+?)[^/]+0.m3u8\?token1=([^&]+)&token2=([^&]+)&expire1=(\d+)&expire2=(\d+)')
 matchParam = None
 with open(urlInfo,'r') as f:
   for line in f:
-    matchParam = reParam.search(line)
-    if matchParam: break
+    m = re.search(r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{6}',line)
+    if m and datetime.datetime.strptime(m.group(0),'%Y-%m-%d %H:%M:%S.%f') >= timeBegin:
+       matchParam = reParam.search(line)
+       if matchParam: break
 
 if matchParam is None:
   logging.info("Failed to find tokens")
