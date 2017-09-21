@@ -18,8 +18,10 @@ if len(sys.argv) > 1:
   prog = sys.argv[1]
   outFile = prog + '_' + time.strftime('%Y%m%d',time.localtime()) + '.ts'
   if prog == 'bluespower':
+    # ra000018
     radioId = "Classical Taiwan"
   elif prog == 'music543':
+    # ra000114
     radioId = "Alian"
   else:
     sys.exit(0)
@@ -40,14 +42,20 @@ logging.basicConfig(filename=logFile,level=logging.DEBUG,format="%(asctime)s: %(
 fb = webdriver.firefox.firefox_binary.FirefoxBinary("D:/programs/Firefox36/firefox.exe")
 fp = webdriver.FirefoxProfile()
 browser = webdriver.Firefox(firefox_profile=fp,firefox_binary=fb)
-browser.get(urlHiChannel)
-time.sleep(60) #wait for advertisement to finish
-timeBegin = datetime.datetime.utcnow()
-time.sleep(1)
-try:
-  browser.find_element_by_xpath("//div/p[contains(text(),'{0}')]/../preceding-sibling::a".format(radioId)).click()
-except:
-  pass
+retry = 5
+while retry > 0:
+  browser.get(urlHiChannel)
+  time.sleep(60) #wait for advertisement to finish
+  try:
+    timeBegin = datetime.datetime.utcnow()
+    time.sleep(1)
+    browser.find_element_by_xpath("//div/p[contains(text(),'{0}')]/../preceding-sibling::a".format(radioId)).click()
+    break
+  except:
+    retry -= 1
+    logging.info("Oops. " + radioId + " is not found.")
+if retry == 0: sys.exit(0)
+time.sleep(10)
 browser.quit()
 
 print "search log after " + str(timeBegin)
