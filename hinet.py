@@ -44,37 +44,43 @@ fp = webdriver.FirefoxProfile()
 browser = webdriver.Firefox(firefox_profile=fp,firefox_binary=fb)
 retry = 5
 while retry > 0:
+  retry -= 1
   browser.get(urlHiChannel)
   time.sleep(60) #wait for advertisement to finish
   try:
     timeBegin = datetime.datetime.utcnow()
     time.sleep(1)
     browser.find_element_by_xpath("//div/p[contains(text(),'{0}')]/../preceding-sibling::a".format(radioId)).click()
-    break
   except:
-    retry -= 1
     logging.info("Oops. " + radioId + " is not found.")
-if retry == 0: sys.exit(0)
-time.sleep(10)
+    continue
+
+  time.sleep(10) #buffer for web page to be loaded
+  print "search log after " + str(timeBegin)
+  reParam = re.compile('(/live/pool/.+?)[^/]+0.m3u8\?token1=([^&]+)&token2=([^&]+)&expire1=(\d+)&expire2=(\d+)')
+  matchParam = None
+  with open(urlInfo,'r') as f:
+    for line in f:
+      m = re.search(r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{6}',line)
+      if m and datetime.datetime.strptime(m.group(0),'%Y-%m-%d %H:%M:%S.%f') >= timeBegin:
+        matchParam = reParam.search(line)
+        if matchParam: break
+   
+  if matchParam is None:
+    logging.info("Failed to find tokens")
+  else:
+    path,token1,token2,expire1,expire2 = matchParam.groups()
+    if re.search(r'ra000036',path): #ra000036 is default channel which should not be seen here
+      logging.info("Failed to switch channel")
+    else:
+      url = site + matchParam.group(0)
+      prefix = site + path
+      break
+
 browser.quit()
+if retry == 0: sys.exit(0)
 
-print "search log after " + str(timeBegin)
-reParam = re.compile('(/live/pool/.+?)[^/]+0.m3u8\?token1=([^&]+)&token2=([^&]+)&expire1=(\d+)&expire2=(\d+)')
-matchParam = None
-with open(urlInfo,'r') as f:
-  for line in f:
-    m = re.search(r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{6}',line)
-    if m and datetime.datetime.strptime(m.group(0),'%Y-%m-%d %H:%M:%S.%f') >= timeBegin:
-       matchParam = reParam.search(line)
-       if matchParam: break
-
-if matchParam is None:
-  logging.info("Failed to find tokens")
-  sys.exit(0)
-
-url = site + matchParam.group(0)
-path,token1,token2,expire1,expire2 = matchParam.groups()
-prefix = site + path
+logging.info("opening URL: " + url)
 
 headers = { 'Host': site[7:], #skip http://
             'Connection': 'keep-alive',
@@ -84,9 +90,6 @@ headers = { 'Host': site[7:], #skip http://
             'Accept-Encoding': 'gzip,deflate,sdch',
             'Accept-Language': 'zh-TW,zh;q=0.8,en-US;q=0.6,en;q=0.4'
            }
-
-logging.info("opening URL: " + url)
-
 lastId = 0
 f = open(outFile,'wb')
 elapsed = 0
@@ -135,7 +138,6 @@ while elapsed < duration:
     except Exception as e:
       logging.error(e)
       time.sleep(1)
-
 f.close()
 
 logging.info("exit.")
