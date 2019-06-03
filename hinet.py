@@ -21,7 +21,6 @@ if len(sys.argv) > 1:
     # ra000018
     radioId = "Classical Taiwan"
   elif prog == 'music543':
-    # ra000114
     radioId = "Alian"
   else:
     sys.exit(0)
@@ -39,21 +38,22 @@ os.environ["MOZ_LOG_FILE"] = "d:/temp/ff.log"
 
 logging.basicConfig(filename=logFile,level=logging.DEBUG,format="%(asctime)s: %(message)s")
 
-fb = webdriver.firefox.firefox_binary.FirefoxBinary("D:/programs/Firefox36/firefox.exe")
+fb = webdriver.firefox.firefox_binary.FirefoxBinary("C:/Program Files/Mozilla Firefox/firefox.exe")
 fp = webdriver.FirefoxProfile()
 browser = webdriver.Firefox(firefox_profile=fp,firefox_binary=fb)
-retry = 5
+retry = 100
 while retry > 0:
   retry -= 1
   browser.get(urlHiChannel)
-  time.sleep(60) #wait for advertisement to finish
+  time.sleep(40) #wait for advertisement to finish
+
   try:
-    timeBegin = datetime.datetime.utcnow()
-    time.sleep(1)
-    browser.find_element_by_xpath("//div/p[contains(text(),'{0}')]/../preceding-sibling::a".format(radioId)).click()
+     timeBegin = datetime.datetime.utcnow()
+     time.sleep(1)
+     browser.find_element_by_xpath("//div/p[contains(text(),'{0}')]/../preceding-sibling::a".format(radioId)).click()
   except:
-    logging.info("Oops. " + radioId + " is not found.")
-    continue
+     logging.info("Oops. " + radioId + " is not found.")
+     continue
 
   time.sleep(10) #buffer for web page to be loaded
   print "search log after " + str(timeBegin)
@@ -70,7 +70,7 @@ while retry > 0:
     logging.info("Failed to find tokens")
   else:
     path,token1,token2,expire1,expire2 = matchParam.groups()
-    if re.search(r'ra000036',path): #ra000036 is default channel which should not be seen here
+    if not re.search(r'ra000(018|114)',path): # to avoid failing to switch channel
       logging.info("Failed to switch channel")
     else:
       url = site + matchParam.group(0)
