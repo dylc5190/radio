@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import os
 import re
@@ -30,22 +30,25 @@ logFile = 'radio.log'
 
 logging.basicConfig(filename=logFile,level=logging.DEBUG,format="%(asctime)s: %(message)s")
 
-response = urllib.request.urlopen('https://www.e-classical.com.tw/index.html')
-page = response.read().decode('utf-8')
-found = 0
-url = None
-for line in page.split():
-    if found == 1:
-       m = re.search(r"\$\('#radio_src'\)\.attr\('src','(https://.+)'\);",line)
-       if m:
-          url = m.group(1)
-          break
-    else:          
-        m1 = re.search(r"\$\('\.radio_onair'\)",line)
-        if m1:
-           found += 1
-           continue
+def get_url():
+  response = urllib.request.urlopen('https://www.e-classical.com.tw/index.html')
+  page = response.read().decode('utf-8')
+  found = 0
+  url = None
+  for line in page.split():
+      if found == 1:
+         m = re.search(r"\$\('#radio_src'\)\.attr\('src','(https://.+)'\);",line)
+         if m:
+            url = m.group(1)
+            break
+      else:          
+          m1 = re.search(r"\$\('\.radio_onair'\)",line)
+          if m1:
+             found += 1
+             continue
+  return(url)
 
+url = get_url()
 if url is None:
     logging.info("Failed to find URL")
     sys.exit(0)
@@ -59,13 +62,16 @@ headers = { 'Origin': 'https://www.e-classical.com.tw',
             'Referer': 'https://www.e-classical.com.tw/index.html',
            }
 lastId = 0
-f = open(outFile,'wb')
 elapsed = 0
+err = 0
 t0 = time.time()
-while elapsed < duration:
+with open(outFile,'wb') as f:
+  while elapsed < duration:
     elapsed = time.time() - t0
-    req = urllib.request.Request(url, None, headers)
     try:
+      if err:       
+        url = get_url() # after error occurs, token becomes expired. need to get a new one.
+      req = urllib.request.Request(url, None, headers)
       response = urllib.request.urlopen(req)
       hdr = response.getheader('Content-Type')
       if re.search(r'vnd\.apple\.mpegurl',hdr) is None:
@@ -108,9 +114,11 @@ while elapsed < duration:
                 break
       pause = 5 - (time.time() - t1)
       if pause > 0: time.sleep(pause)
+      err = 0
     except Exception as e:
-      logging.error(e)
       time.sleep(1)
-f.close()
+      err += 1
+      if err < 10 or err % 60 == 0:
+        logging.error(e)
 
 logging.info("Exit")
